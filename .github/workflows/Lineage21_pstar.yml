@@ -1,0 +1,709 @@
+name: (pstar) (LineageOS 21) (docker lxc) Build Kernel
+on:
+  push:
+  watch:
+    types: [started]
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kernel by ${{ github.actor }}
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+    steps:
+    - uses: actions/checkout@v4
+    - name: Prepare Configuration
+      run: |
+        CONFIG_ENV=$(grep -w "CONFIG_ENV" Lineage21_pstar.env | head -n 1 | cut -d "=" -f 2)
+        CONFIG_LIST=(
+            KERNEL_SOURCE
+            KERNEL_SOURCE_BRANCH
+            KERNEL_CONFIG
+            KERNEL_IMAGE_NAME
+            ARCH
+            ADD_LOCALVERSION_TO_FILENAME
+            EXTRA_CMDS
+            USE_CUSTOM_CLANG
+            CUSTOM_CLANG_SOURCE
+            CUSTOM_CLANG_BRANCH
+            CUSTOM_CMDS
+            CLANG_BRANCH
+            CLANG_VERSION
+            ENABLE_GCC_ARM64
+            ENABLE_GCC_ARM32
+            USE_CUSTOM_GCC_64
+            CUSTOM_GCC_64_SOURCE
+            CUSTOM_GCC_64_BRANCH
+            CUSTOM_GCC_64_BIN
+            USE_CUSTOM_GCC_32
+            CUSTOM_GCC_32_SOURCE
+            CUSTOM_GCC_32_BRANCH
+            CUSTOM_GCC_32_BIN
+            ENABLE_KERNELSU
+            KERNELSU_TAG
+            ADD_KPROBES_CONFIG
+            DISABLE-LTO
+            ADD_OVERLAYFS_CONFIG
+            DISABLE_CC_WERROR
+            APPLY_KSU_PATCH
+            USE_CUSTOM_ANYKERNEL3
+            CUSTOM_ANYKERNEL3_SOURCE
+            CUSTOM_ANYKERNEL3_BRANCH
+            ENABLE_CCACHE
+            NEED_DTBO
+            BUILD_BOOT_IMG
+            SOURCE_BOOT_IMAGE
+            KSU_EXPECTED_SIZE
+            KSU_EXPECTED_HASH
+            REMOVE_UNUSED_PACKAGES
+            IMPORT_DOCKER
+            Kernel_Version
+            Kernel_Extra_Version
+            Remove_Kernel_Validation
+            Remove_Warning
+            Docker_LXC_Patches
+            Remove_ANDROID_PARANOID_NETWORK
+            Add_Kali_Nethunter_Patches
+            Generate_Build_Config
+            REMOVE_UNUSED_PACKAGES
+        )
+
+        for CONFIG in "${CONFIG_LIST[@]}"; do
+            if [[ "$CONFIG" == "EXTRA_CMDS" || "$CONFIG" == "CUSTOM_CMDS" ]]; then
+                echo "$CONFIG=$(grep -w "$CONFIG" "$CONFIG_ENV" | head -n 1 | cut -d ":" -f 2)" >> $GITHUB_ENV
+            else
+                echo "$CONFIG=$(grep -w "$CONFIG" "$CONFIG_ENV" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+            fi
+        done
+
+    - name: Remove unused packages
+      if: env.REMOVE_UNUSED_PACKAGES == 'true'
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: ture
+        android: false
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: false
+
+    - name: Set swap to 10G
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 10
+
+    - name: Setup build kernel environment
+      run: |
+        echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
+        echo "DEVICE=$(echo ${{ env.KERNEL_CONFIG }} | sed 's!vendor/!!;s/_defconfig//;s/_user//;s/-perf//')" >> $GITHUB_ENV
+        sudo apt-get update
+        sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
+        mkdir -p $GITHUB_WORKSPACE/kernel_workspace
+
+    - name: Download Clang-aosp
+      if: env.USE_CUSTOM_CLANG != 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        mkdir clang-aosp
+        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.CLANG_BRANCH }}/clang-${{ env.CLANG_VERSION }}.tar.gz
+        tar -C clang-aosp/ -zxvf clang-${{ env.CLANG_VERSION }}.tar.gz
+
+    - name: Download Custom-Clang
+      if: env.USE_CUSTOM_CLANG == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        if [[ ${{ env.CUSTOM_CLANG_SOURCE }} =~ git ]]; then
+            if [[ ${{ env.CUSTOM_CLANG_SOURCE }} == *'.tar.gz' ]]; then
+                wget -O clang.tar.gz ${{ env.CUSTOM_CLANG_SOURCE }}
+                mkdir clang-aosp
+                tar -C clang-aosp/ -zxvf clang.tar.gz
+            else
+                git clone ${{ env.CUSTOM_CLANG_SOURCE }} -b ${{ env.CUSTOM_CLANG_BRANCH }} clang-aosp --depth=1
+            fi
+        else
+            wget -O clang.zip ${{ env.CUSTOM_CLANG_SOURCE }}
+            mkdir clang-aosp
+            unzip clang.zip -d clang-aosp/
+        fi
+
+    - name: Download Gcc-aosp
+      if: env.USE_CUSTOM_GCC_64 != 'true' || env.USE_CUSTOM_GCC_32 != 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        if [ ${{ env.ENABLE_GCC_ARM64 }} = true ]; then
+            mkdir gcc-64
+            wget -O gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+            tar -C gcc-64/ -zxvf gcc-aarch64.tar.gz
+            echo "GCC_64=CROSS_COMPILE=$GITHUB_WORKSPACE/kernel_workspace/gcc-64/bin/aarch64-linux-android-" >> $GITHUB_ENV
+        fi
+
+        if [ ${{ env.ENABLE_GCC_ARM32 }} = true ]; then
+            mkdir gcc-32
+            wget -O gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+            tar -C gcc-32/ -zxvf gcc-arm.tar.gz
+            echo "GCC_32=CROSS_COMPILE_ARM32=$GITHUB_WORKSPACE/kernel_workspace/gcc-32/bin/arm-linux-androideabi-" >> $GITHUB_ENV
+        fi
+
+    - name: Download Custom-Gcc
+      if: env.USE_CUSTOM_GCC_64 == 'true' || env.USE_CUSTOM_GCC_32 == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        if [ ${{ env.USE_CUSTOM_GCC_64 }} = true ]; then
+          if [[ ${{ env.CUSTOM_GCC_64_SOURCE }} =~ git ]]; then
+              if [[ ${{ env.CUSTOM_GCC_64_SOURCE }} == *'.tar.gz' ]]; then
+                wget -O gcc-64.tar.gz ${{ env.CUSTOM_GCC_64_SOURCE }}
+                mkdir gcc-64
+                tar -C gcc-64/ -zxvf gcc-64.tar.gz
+              else
+                git clone ${{ env.CUSTOM_GCC_64_SOURCE }} -b ${{ env.CUSTOM_GCC_64_BRANCH }} gcc-64 --depth=1
+              fi
+          else
+              wget -O gcc-64.zip ${{ env.CUSTOM_GCC_64_SOURCE }}
+              mkdir gcc-64
+              unzip gcc-64.zip -d gcc-64/
+          fi
+          echo "GCC_64=CROSS_COMPILE=$GITHUB_WORKSPACE/kernel_workspace/gcc-64/bin/${{ env.CUSTOM_GCC_64_BIN }}" >> $GITHUB_ENV
+        fi
+
+        if [ ${{ env.USE_CUSTOM_GCC_32 }} = true ]; then
+          if [[ ${{ env.CUSTOM_GCC_32_SOURCE }} =~ git ]]; then
+              if [[ ${{ env.CUSTOM_GCC_32_SOURCE }} == *'.tar.gz' ]]; then
+                wget -O gcc-32.tar.gz ${{ env.CUSTOM_GCC_32_SOURCE }}
+                mkdir gcc-32
+                tar -C gcc-32/ -zxvf gcc-32.tar.gz
+              else
+                git clone ${{ env.CUSTOM_GCC_32_SOURCE }} -b ${{ env.CUSTOM_GCC_32_BRANCH }} gcc-32 --depth=1
+              fi
+          else
+            wget -O gcc-32.zip ${{ env.CUSTOM_GCC_32_SOURCE }}
+            mkdir gcc-32
+            unzip gcc-32.zip -d gcc-32/
+          fi
+          echo "GCC_32=CROSS_COMPILE=$GITHUB_WORKSPACE/kernel_workspace/gcc-32/bin/${{ env.CUSTOM_GCC_32_BIN }}" >> $GITHUB_ENV
+        fi
+
+    - name: Download mkbootimg tools
+      if: env.BUILD_BOOT_IMG == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
+
+    - name: Download kernel source
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        git clone --recursive ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
+        if [[ ${{ env.ADD_LOCALVERSION_TO_FILENAME }} == 'true' ]]; then
+          echo "LOCALVERSION=$(cat android-kernel/localversion)" >> $GITHUB_ENV
+        else
+          echo "LOCALVERSION=" >> $GITHUB_ENV
+        fi
+
+    - name: Generate Kernel Build Config
+      if: env.Generate_Build_Config == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        cat arch/arm64/configs/vendor/kona-perf_defconfig \
+        arch/arm64/configs/vendor/ext_config/moto-kona.config \
+        arch/arm64/configs/vendor/ext_config/pstar-default.config \
+        arch/arm64/configs/vendor/debugfs.config \
+        >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+
+    - name: Download Patches
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "------------ Download Patches --------------------------------------------------------------"
+        git clone https://github.com/AndroidAppsUsedByMyself/kernel_patches.git --depth=1
+
+    - name: Import Docker Config
+      if: env.IMPORT_DOCKER == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+
+        echo "------------ Add git config to avoid error during some git operate ------------------------"
+        git config --global user.email "actions@github.com"
+        git config --global user.name "github-actions[bot]"
+
+        echo "------------ Import docker -----------------------------------------------------------------"
+        git fetch https://github.com/lateautumn233/android_kernel_docker main
+        git merge -s ours --no-commit --allow-unrelated-histories --squash FETCH_HEAD
+        git read-tree --prefix=docker -u FETCH_HEAD
+        echo "source \"docker/Kconfig\"" >> arch/arm64/Kconfig
+        git commit -a -m "Imported docker from https://github.com/lateautumn233/android_kernel_docker"
+
+    - name: Apply patches for docker and lxc
+      if: env.Docker_LXC_Patches == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "------------ Patches for lxc and docker ----------------------------------------------------"
+        patch -p1 < kernel_patches/patches/${{ env.Kernel_Extra_Version }}/cgroup.patch
+        patch -p1 < kernel_patches/patches/${{ env.Kernel_Extra_Version }}/xt_qtaguid.patch
+
+        echo "------------ Add Kernel Config required by lxc and docker ----------------------------------"
+        # https://github.com/AndroidAppsUsedByMyself/android_kernel_motorola_sm8250/blob/backups/20240102-2249/0warning0error_lineage-20/arch/arm64/configs/vendor/lineageos_pstar_lxc_docker_defconfig
+        echo "------------ Generally Necessary Docker Configs --------------------------------------------"
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_CGROUP_SCHED \
+        -e CONFIG_RT_GROUP_SCHED \
+        -e CONFIG_CPUSETS \
+        -e CONFIG_BLK_CGROUP \
+        -e CONFIG_DEBUG_BLK_CGROUP \
+        -e CONFIG_MEMCG \
+        -e CONFIG_MEMCG_SWAP \
+        -e CONFIG_CGROUP_PIDS \
+        -e CONFIG_PID_NS \
+        -e CONFIG_IPC_NS \
+        -e CONFIG_CGROUP_DEVICE \
+        -e CONFIG_BRIDGE_NETFILTER \
+        -e CONFIG_NETFILTER_XT_MATCH_ADDRTYPE \
+        -e CONFIG_IP_VS \
+        -e CONFIG_NETFILTER_XT_MATCH_IPVS \
+        -e CONFIG_POSIX_MQUEUE
+
+        echo "------------ Optional Features Docker Configs ----------------------------------------------"
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_USER_NS \
+        -e CONFIG_CGROUP_PIDS \
+        -e CONFIG_BLK_DEV_THROTTLING \
+        -e CONFIG_CGROUP_PERF \
+        -e CONFIG_HUGETLB_PAGE \
+        -e CONFIG_CGROUP_HUGETLB \
+        -e CONFIG_NET_CLS_CGROUP \
+        -e CONFIG_CGROUP_NET_PRIO \
+        -e CONFIG_FAIR_GROUP_SCHED \
+        -e CONFIG_CFS_BANDWIDTH \
+        -e CONFIG_IP_VS_NFCT \
+        -e CONFIG_IP_VS_PROTO_TCP \
+        -e CONFIG_IP_VS_PROTO_UDP \
+        -e CONFIG_IP_VS_RR \
+        -e CONFIG_VXLAN \
+        -e CONFIG_MACVLAN \
+        -e CONFIG_BTRFS_FS \
+        -e CONFIG_BTRFS_FS_POSIX_ACL \
+        -e CONFIG_DM_THIN_PROVISIONING \
+        -e CONFIG_CGROUP_RDMA \
+        -e CONFIG_NF_NAT_IPV6 \
+        -e CONFIG_IP6_NF_NAT \
+        -e CONFIG_IP6_NF_TARGET_MASQUERADE \
+        -e CONFIG_NETFILTER_XT_TARGET_CHECKSUM \
+        -e CONFIG_CHECKPOINT_RESTORE \
+        -e CONFIG_FHANDLE \
+        -e CONFIG_UNIX_DIAG \
+        -e CONFIG_PACKET_DIAG \
+        -e CONFIG_NETLINK_DIAG
+
+    - name: Apply patches for kali nethunter
+      if: env.Add_Kali_Nethunter_Patches == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+
+        echo "------------ Download Patches --------------------------------------------------------------"
+        git clone https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-kernel.git --depth=1
+
+        echo "------------ Patches for kali nethunter ----------------------------------------------------"
+        find kali-nethunter-kernel/patches/${{ env.Kernel_Version }}/  -type f -name "*.patch" -exec  sh -c 'git apply {}' \;
+
+        echo "------------ Add Kernel Config required by Kali --------------------------------------------"
+        # Configuring the Kernel - General (https://www.kali.org/docs/nethunter/nethunter-kernel-2-config-1)
+        # General (ignore set “Default host name” to “kali”)
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_SYSVIPC
+
+        # Modules
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_MODULES \
+        -e CONFIG_MODULE_UNLOAD \
+        -e CONFIG_MODULE_FORCE_UNLOAD \
+        -e CONFIG_MODVERSIONS
+
+        # Kernel Image
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE \
+        -e IMG_GZ_DTB
+
+        # Configuring the Kernel - Network (https://www.kali.org/docs/nethunter/nethunter-kernel-3-config-2/)
+        # Bluetooth
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_BT_HCIBTUSB \
+        -e CONFIG_BT_HCIBTUSB_BCM \
+        -e CONFIG_BT_HCIBTUSB_RTL \
+        -e CONFIG_BT_HCIUART \
+        -e CONFIG_BT_HCIUART_H4 \
+        -e CONFIG_BT_HCIBCM203X \
+        -e CONFIG_BT_HCIBPA10X \
+        -e CONFIG_BT_HCIBFUSB \
+        -e CONFIG_BT_HCIVHCI
+
+        # Android Binder IPC Driver
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_ANDROID_BINDER_IPC
+
+        # MAC80211
+        #scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        #-e CONFIG_CFG80211_WEXT \
+        #-e CONFIG_MAC80211 \
+        #-e CONFIG_MAC80211_MESH
+
+        # Ethernet
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_USB_RTL8150 \
+        -e CONFIG_USB_RTL8152
+
+        # Configuring the Kernel - Wifi (https://www.kali.org/docs/nethunter/nethunter-kernel-4-config-3/)
+        # Kernel Configuration cont.
+        # Wireless LAN
+        #scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        #-e CONFIG_WLAN_VENDOR_ATH \
+        #-e CONFIG_ATH9K_HTC \
+        #-e CONFIG_CARL9170 \
+        #-e CONFIG_ATH6KL \
+        #-e CONFIG_ATH6KL_USB \
+        #-e CONFIG_WLAN_VENDOR_MEDIATEK \
+        #-e CONFIG_MT7601U \
+        #-e CONFIG_WLAN_VENDOR_RALINK \
+        #-e CONFIG_RT2X00 \
+        #-e CONFIG_RT2500USB \
+        #-e CONFIG_RT73USB \
+        #-e CONFIG_RT2800USB \
+        #-e CONFIG_RT2800USB_RT33XX \
+        #-e CONFIG_RT2800USB_RT35XX \
+        #-e CONFIG_RT2800USB_RT3573 \
+        #-e CONFIG_RT2800USB_RT53XX \
+        #-e CONFIG_RT2800USB_RT55XX \
+        #-e CONFIG_RT2800USB_UNKNOWN \
+        #-e CONFIG_WLAN_VENDOR_REALTEK \
+        #-e CONFIG_RTL8187 \
+        #-e CONFIG_RTL_CARDS \
+        #-e CONFIG_RTL8192CU \
+        #-e CONFIG_RTL8XXXU_UNTESTED \
+        #-e CONFIG_WLAN_VENDOR_ZYDAS \
+        #-e CONFIG_USB_ZD1201 \
+        #-e CONFIG_ZD1211RW \
+        #-e CONFIG_USB_NET_RNDIS_WLAN
+
+        # Configuring the Kernel - SDR (https://www.kali.org/docs/nethunter/nethunter-kernel-5-config-4/)
+        # Configuring the Kernel - SDR
+        # Kernel Configuration
+        # SDR
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_MEDIA_DIGITAL_TV_SUPPORT \
+        -e CONFIG_MEDIA_SDR_SUPPORT \
+        -e CONFIG_USB_AIRSPY \
+        -e CONFIG_USB_HACKRF \
+        -e USB_MSI2500 \
+        -d CONFIG_MEDIA_SUBDRV_AUTOSELECT \
+        -e CONFIG_DVB_RTL2830 \
+        -e CONFIG_DVB_RTL2832 \
+        -e CONFIG_DVB_RTL2832_SDR \
+        -e CONFIG_DVB_SI2168 \
+        -e CONFIG_DVB_ZD1301_DEMOD
+
+        # Configuring the 4.x Kernel - USB (https://www.kali.org/docs/nethunter/nethunter-kernel-7-config-6/)
+        # Configuring the 4.x Kernel - USB
+        # Kernel Configuration cont.
+        # USB Modem
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_USB_ACM
+
+        # USB Gadget support
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_USB_CONFIGFS_SERIAL \
+        -e CONFIG_USB_CONFIGFS_ACM \
+        -e CONFIG_USB_CONFIGFS_OBEX \
+        -e CONFIG_USB_CONFIGFS_NCM \
+        -e CONFIG_USB_CONFIGFS_ECM \
+        -e CONFIG_USB_CONFIGFS_ECM_SUBSET \
+        -e CONFIG_USB_CONFIGFS_RNDIS \
+        -e CONFIG_USB_CONFIGFS_EEM \
+        -e CONFIG_USB_CONFIGFS_MASS_STORAGE \
+        -e CONFIG_USB_CONFIGFS_F_HID
+
+        # Configuring the Kernel - NFS (https://www.kali.org/docs/nethunter/nethunter-kernel-8-config-7/)
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_NETWORK_FILESYSTEMS \
+        -e CONFIG_NFS_V2 \
+        -e CONFIG_NFS_V3 \
+        -e CONFIG_NFS_V4 \
+        -e CONFIG_NFSD \
+        -e CONFIG_NFSD_V3 \
+        -e CONFIG_NFSD_V4
+
+
+    - name: Remove ANDROID_PARANOID_NETWORK
+      if: env.Remove_ANDROID_PARANOID_NETWORK == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "------------ Remove ANDROID_PARANOID_NETWORK -----------------------------------------------"
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} -d ANDROID_PARANOID_NETWORK
+
+    - name: Remove Kernel Validation
+      if: env.Remove_Kernel_Validation == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "------------ Patches for Remove Kernel Validation ------------------------------------------"
+        scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} \
+        -e CONFIG_MODULE_FORCE_LOAD \
+        -d CONFIG_MODULE_SIG_FORCE
+        patch -p1 < kernel_patches/patches/${{ env.Kernel_Extra_Version }}/module.patch
+        #https://blog.xzr.moe/archives/236/
+        #disable CONFIG_MODVERSIONS is useless
+
+    - name: Remove Warning
+      if: env.Remove_Warning == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "------------ Patches for remove warning ----------------------------------------------------"
+        patch -p1 < kernel_patches/patches/${{ env.Kernel_Extra_Version }}/nowarnings.patch
+        #scripts/config --file arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} -d CONFIG_CC_WERROR -e CONFIG_SECTION_MISMATCH_WARN_ONLY --set-val CONFIG_FRAME_WARN 4096
+
+    - name: Download source boot image
+      if: env.BUILD_BOOT_IMG == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        wget -O boot-source.img ${{ env.SOURCE_BOOT_IMAGE }}
+        if [ -f boot-source.img ]; then
+            echo "FORMAT_MKBOOTING=$(echo `tools/unpack_bootimg.py --boot_img=boot-source.img --format mkbootimg`)" >> $GITHUB_ENV
+            echo "HAVE_SOURCE_BOOT_IMAGE=true" >> $GITHUB_ENV
+        fi
+
+    - name: Setup KernelSU
+      if: env.ENABLE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        rm -rf KernelSU drivers/kernelsu
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
+        KSU_VERSION=$(cd KernelSU && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
+        echo "UPLOADNAME=-KernelSU_$KSU_VERSION" >> $GITHUB_ENV
+
+    - name: Setup Configuration for Kernel
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        if [ ${{ env.APPLY_KSU_PATCH }} = true ]; then
+            bash $GITHUB_WORKSPACE/patches/patches.sh
+            if grep -q "CONFIG_KSU" arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}; then
+                sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+                sed -i 's/CONFIG_KSU=n/CONFIG_KSU=y/g' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            else
+                echo "CONFIG_KSU=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            fi
+        fi
+        if [ ${{ env.ADD_KPROBES_CONFIG }} = true -a ${{ env.APPLY_KSU_PATCH }} != true ]; then
+            echo "CONFIG_MODULES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_HAVE_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_KPROBE_EVENTS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        fi
+        if [ ${{ env.ADD_OVERLAYFS_CONFIG }} = true ]; then
+            echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        fi
+        if [ ${{ env.DISABLE-LTO }} = true ]; then
+            sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            sed -i 's/CONFIG_THINLTO=y/CONFIG_THINLTO=n/' arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+            echo "CONFIG_LTO_NONE=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        fi
+        if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
+            echo "CONFIG_CC_WERROR=n" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        fi
+
+    - name: Setup ccache
+      if: env.ENABLE_CCACHE == 'true'
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: build-kernel-${{ env.DEVICE }}${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}
+        max-size: 2G
+
+    - name: Build kernel
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH
+        export KBUILD_BUILD_HOST=Github-Action
+        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
+        if [ ! -z ${{ env.KSU_EXPECTED_SIZE }} ] && [ ! -z ${{ env.KSU_EXPECTED_HASH }} ]; then
+          export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
+          export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
+        fi
+        make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
+        if [ ${{ env.ENABLE_CCACHE }} = true ]; then
+            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+        else
+            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+        fi
+
+    - name: Check a kernel output files
+      run: |
+       cd $GITHUB_WORKSPACE/kernel_workspace
+       if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
+           echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+       else
+           echo "Kernel output file is empty"
+           exit 1
+       fi
+       if [ ${{ env.NEED_DTBO }} = true ]; then
+           if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
+               echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
+           else
+               echo "DTBO image is empty"
+               exit 1
+           fi
+       fi
+
+    - name: Make Anykernel3
+      if: env.CHECK_FILE_IS_OK == 'true' && env.USE_CUSTOM_ANYKERNEL3 != 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        git clone https://github.com/osm0sis/AnyKernel3 --depth=1 AnyKernel3
+        sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+        sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
+        sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
+        cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+        if [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
+            cp android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+        fi
+        rm -rf AnyKernel3/.git* AnyKernel3/README.md
+
+    - name: Make Custom-Anykernel3
+      if: env.CHECK_FILE_IS_OK == 'true' && env.USE_CUSTOM_ANYKERNEL3 == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        if [[ ${{ env.CUSTOM_ANYKERNEL3_SOURCE }} =~ git ]]; then
+            if [[ ${{ env.CUSTOM_ANYKERNEL3_SOURCE }} == *'.tar.gz' ]]; then
+                wget -O AnyKernel3.tar.gz ${{ env.CUSTOM_ANYKERNEL3_SOURCE }}
+                mkdir AnyKernel3
+                tar -C AnyKernel3/ -zxvf AnyKernel3.tar.gz
+            else
+                git clone ${{ env.CUSTOM_ANYKERNEL3_SOURCE }} -b ${{ env.CUSTOM_ANYKERNEL3_BRANCH }} --depth=1 AnyKernel3
+            fi
+        else
+            wget -O AnyKernel3.zip ${{ env.CUSTOM_ANYKERNEL3_SOURCE }}
+            mkdir AnyKernel3
+            unzip AnyKernel3.zip -d AnyKernel3/
+        fi
+        cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+        if [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
+            cp android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+        fi
+        rm -rf AnyKernel3/.git* AnyKernel3/README.md
+
+    - name: Make boot image
+      if: env.HAVE_SOURCE_BOOT_IMAGE == 'true' && env.CHECK_FILE_IS_OK == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        tools/unpack_bootimg.py --boot_img boot-source.img
+        cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} out/kernel
+        tools/mkbootimg.py ${{ env.FORMAT_MKBOOTING }} -o boot.img
+        if [ -f boot.img ]; then
+            echo "MAKE_BOOT_IMAGE_IS_OK=true" >> $GITHUB_ENV
+        else
+            echo "Boot image is empty"
+            exit 1
+        fi
+
+    - name: Upload ${{ env.KERNEL_IMAGE_NAME }}
+      if: env.CHECK_FILE_IS_OK == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
+
+    - name: Upload AnyKernel3
+      if: env.CHECK_FILE_IS_OK == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: AnyKernel3${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        path: kernel_workspace/AnyKernel3/*
+
+    - name: Upload DTBO image
+      if: env.CHECK_DTBO_IS_OK == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: dtbo-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img
+
+    - name: Upload boot image
+      if: env.MAKE_BOOT_IMAGE_IS_OK == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: boot${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        path: kernel_workspace/boot.img
+
+  upload-to-telegram:
+    name: Upload Telegram
+    if: ${{ success() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - telegram-bot-api
+    steps:
+      - name: Donwload Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+      - name: Download Telegram Bot API Binary
+        uses: actions/download-artifact@master
+        with:
+          name: telegram-bot-api-binary
+          path: .
+      - name: Release
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+        run: |
+          ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
+          chmod +x telegram-bot-api-binary
+          ./telegram-bot-api-binary --api-id=${{ secrets.TG_API_ID }} --api-hash=${{ secrets.TG_API_HASH }} --local 2>&1 > /dev/null & 
+          
+          export Artifacts1=$(find artifacts -name "AnyKernel3-KernelSU-lineageos_pstar-*")
+          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=-1001944734677&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts1%22%2C%22caption%22:${ESCAPED}%7D%5D" \
+            -F Artifacts1="@$Artifacts1"
+            
+          export Artifacts2=$(find artifacts -name "Image-KernelSU-lineageos_pstar-*")
+          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=-1001944734677&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts2%22%2C%22caption%22:${ESCAPED}%7D%5D" \
+            -F Artifacts2="@$Artifacts2"
+            
+          export Artifacts3=$(find artifacts -name "boot-KernelSU-lineageos_pstar-*")
+          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=-1001944734677&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts3%22%2C%22caption%22:${ESCAPED}%7D%5D" \
+            -F Artifacts3="@$Artifacts3"
+            
+          pkill telegram-bot
+
+  telegram-bot-api:
+    name: Telegram Bot API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Clone Telegram Bot API
+        run: |
+          git clone --recursive https://github.com/tdlib/telegram-bot-api.git
+          git status telegram-bot-api >> telegram-bot-api-status
+      - name: Cache Bot API Binary
+        id: cache-bot-api
+        uses: actions/cache@v2
+        with:
+          path: telegram-bot-api-binary
+          key: CI-telegram-bot-api-${{ hashFiles('telegram-bot-api-status') }}
+      - name: Compile Telegram Bot API
+        if: steps.cache-bot-api.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install make git zlib1g-dev libssl-dev gperf cmake g++
+          cd telegram-bot-api
+          rm -rf build
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=.. ..
+          cmake --build . --target install -j$(nproc)
+          cd ../..
+          ls -l telegram-bot-api/bin/telegram-bot-api*
+          cp telegram-bot-api/bin/telegram-bot-api telegram-bot-api-binary
+      - name: Upload Binary
+        uses: actions/upload-artifact@master
+        with:
+          name: telegram-bot-api-binary
+          path: telegram-bot-api-binary
