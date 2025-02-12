@@ -45,6 +45,7 @@ jobs:
             CUSTOM_GCC_32_BIN
             ENABLE_KERNELSU
             ENABLE_susfs4ksu
+            IF_KernelSU_CONTAIN_SUSFS
             KERNELSU_URL
             KERNELSU_TAG
             ADD_KPROBES_CONFIG
