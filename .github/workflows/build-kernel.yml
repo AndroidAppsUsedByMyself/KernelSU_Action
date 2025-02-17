@@ -766,6 +766,7 @@ jobs:
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
+        continue-on-error: true
         run: |
           ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
           chmod +x telegram-bot-api-binary
@@ -823,12 +824,14 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
+    if: always()
     needs:
       - build
     steps:
       - name: Send NTFY notifications
         env:
-          NTFY_SUBSCRIPTIONS: ${{ secrets.NTFY_SUBSCRIPTIONS }} # 从 Secrets 中读取订阅 URL
+          NTFY_SUBSCRIPTIONS: ${{ secrets.NTFY_SUBSCRIPTIONS }}
+        continue-on-error: true
         run: |
           IFS=' ' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
 
