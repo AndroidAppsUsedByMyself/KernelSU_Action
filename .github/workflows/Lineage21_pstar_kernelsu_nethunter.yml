@@ -512,7 +512,12 @@ jobs:
         rm -rf KernelSU drivers/kernelsu
         curl -LSs "https://raw.githubusercontent.com/${{ env.KERNELSU_URL }}/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
         KSU_VERSION=$(cd KernelSU* && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-        echo "UPLOADNAME=-KernelSU_$KSU_VERSION" >> $GITHUB_ENV
+        KERNELSU_URL_CLEAN=$(echo "$KERNELSU_URL" | tr '/' '_')
+        if [ -n "$KERNELSU_TAG" ]; then
+            echo "UPLOADNAME=-KernelSU-${KERNELSU_URL_CLEAN}_${KERNELSU_TAG}_$KSU_VERSION" >> $GITHUB_ENV
+        else
+            echo "UPLOADNAME=-KernelSU-${KERNELSU_URL_CLEAN}_$KSU_VERSION" >> $GITHUB_ENV
+        fi
 
     - name: Check susfs4ksu for kernel
       if: env.ENABLE_susfs4ksu == 'false' && env.IF_KernelSU_CONTAIN_SUSFS == 'true'
@@ -815,3 +820,28 @@ jobs:
         with:
           name: telegram-bot-api-binary
           path: telegram-bot-api-binary
+
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send NTFY notifications
+        env:
+          NTFY_SUBSCRIPTIONS: ${{ secrets.NTFY_SUBSCRIPTIONS }} # 从 Secrets 中读取订阅 URL
+        run: |
+          # 分割 NTFY_SUBSCRIPTIONS 为多个 URL
+          IFS=',' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
+
+          # 获取当前 Action 的运行链接
+          ACTION_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          # 遍历每个订阅 URL 并发送通知
+          for url in "${subscriptions[@]}"; do
+            curl -X POST \
+              -H "Title: GitHub Action Notification" \
+              -H "Priority: high" \
+              -d "Action run link: $ACTION_URL" \
+              "$url"
+          done
