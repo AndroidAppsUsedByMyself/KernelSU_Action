@@ -826,20 +826,14 @@ jobs:
     needs:
       - build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Send NTFY notifications
         env:
           NTFY_SUBSCRIPTIONS: ${{ secrets.NTFY_SUBSCRIPTIONS }} # 从 Secrets 中读取订阅 URL
         run: |
-          # 分割 NTFY_SUBSCRIPTIONS 为多个 URL
-          IFS=',' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
+          IFS=' ' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
 
-          # 获取当前 Action 的运行链接
           ACTION_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
-          # 遍历每个订阅 URL 并发送通知
           for url in "${subscriptions[@]}"; do
             curl -X POST \
               -H "Title: GitHub Action Notification" \

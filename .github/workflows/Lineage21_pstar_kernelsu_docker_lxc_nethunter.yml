@@ -830,7 +830,7 @@ jobs:
         env:
           NTFY_SUBSCRIPTIONS: ${{ secrets.NTFY_SUBSCRIPTIONS }} # 从 Secrets 中读取订阅 URL
         run: |
-          IFS=',' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
+          IFS=' ' read -r -a subscriptions <<< "$NTFY_SUBSCRIPTIONS"
 
           ACTION_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
