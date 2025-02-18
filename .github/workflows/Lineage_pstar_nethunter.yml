@@ -1,4 +1,4 @@
-name: (pstar) (LineageOS 21) (pure) Build Kernel
+name: (pstar) (LineageOS) (nethunter) Build Kernel
 on:
   watch:
     types: [started]
@@ -18,7 +18,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Prepare Configuration
       run: |
-        CONFIG_ENV=$(grep -w "CONFIG_ENV" Lineage21_pstar.env | head -n 1 | cut -d "=" -f 2)
+        CONFIG_ENV=$(grep -w "CONFIG_ENV" Lineage_pstar_nethunter.env | head -n 1 | cut -d "=" -f 2)
         CONFIG_LIST=(
             KERNEL_SOURCE
             KERNEL_SOURCE_BRANCH
@@ -215,7 +215,7 @@ jobs:
       run: |
         echo "kernel_source_dir=$GITHUB_WORKSPACE/kernel_workspace/android-kernel" >> $GITHUB_ENV
         echo "target_config=$GITHUB_WORKSPACE/kernel_workspace/android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}" >> $GITHUB_ENV
-        echo "support_config_file=$GITHUB_WORKSPACE/SupportedConfig_Lineage21_pstar" >> $GITHUB_ENV
+        echo "support_config_file=$GITHUB_WORKSPACE/SupportedConfig_Lineage_pstar" >> $GITHUB_ENV
         echo "IGNORE_ERRORS=true" >> $GITHUB_ENV
 
     - name: Generate Kernel Build Config
