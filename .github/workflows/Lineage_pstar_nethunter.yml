@@ -844,6 +844,7 @@ jobs:
               -H "Title: GitHub Action Notification" \
               -H "Priority: high" \
               -H "Actions: view, Open Action, $ACTION_URL" \
-              -d "Build result: $BUILD_RESULT\nAction run link: $ACTION_URL" \
+              -d "Build result: $BUILD_RESULT
+              Action run link: $ACTION_URL" \
               "$url"
           done
