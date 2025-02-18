@@ -837,10 +837,13 @@ jobs:
 
           ACTION_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
+          BUILD_RESULT=${{ needs.build.result }}
+
           for url in "${subscriptions[@]}"; do
             curl -X POST \
               -H "Title: GitHub Action Notification" \
               -H "Priority: high" \
-              -d "Action run link: $ACTION_URL" \
+              -H "Actions: view, Open Action, $ACTION_URL" \
+              -d "Build result: $BUILD_RESULT\nAction run link: $ACTION_URL" \
               "$url"
           done
