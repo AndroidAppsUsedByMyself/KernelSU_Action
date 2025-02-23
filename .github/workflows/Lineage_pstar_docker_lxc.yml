@@ -77,6 +77,7 @@ jobs:
             Add_Kali_Nethunter_Patches
             Generate_Build_Config
             Generate_Build_Config_Command
+            AdditionLOCALVERSION
         )
 
         for CONFIG in "${CONFIG_LIST[@]}"; do
@@ -205,11 +206,6 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         git clone --recursive ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
-        if [[ ${{ env.ADD_LOCALVERSION_TO_FILENAME }} == 'true' ]]; then
-          echo "LOCALVERSION=$(cat android-kernel/localversion)" >> $GITHUB_ENV
-        else
-          echo "LOCALVERSION=" >> $GITHUB_ENV
-        fi
 
     - name: Set some env for safelyconfigctl
       run: |
@@ -218,11 +214,22 @@ jobs:
         echo "support_config_file=$GITHUB_WORKSPACE/SupportedConfig_Lineage_pstar" >> $GITHUB_ENV
         echo "IGNORE_ERRORS=true" >> $GITHUB_ENV
 
-    - name: Generate Kernel Build Config
+    - name: Generate Kernel Build Config and LOCALVERSION
       if: env.Generate_Build_Config == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         ${{ env.Generate_Build_Config_Command}}
+        if [[ ${{ env.AdditionLOCALVERSION }} != '' ]]; then
+          echo ${{ env.AdditionLOCALVERSION }} >> localversion
+        fi
+
+    - name: Add Localversion to Filename
+      run: |
+        if [[ ${{ env.ADD_LOCALVERSION_TO_FILENAME }} == 'true' ]]; then
+          echo "LOCALVERSION=$(cat android-kernel/localversion)" >> $GITHUB_ENV
+        else
+          echo "LOCALVERSION=" >> $GITHUB_ENV
+        fi
 
     - name: Download Patches
       run: |
