@@ -219,8 +219,8 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         ${{ env.Generate_Build_Config_Command}}
-        if [[ ${{ env.AdditionLOCALVERSION }} != '' ]]; then
-          echo ${{ env.AdditionLOCALVERSION }} >> localversion
+        if [[ -n "$AdditionLOCALVERSION" ]]; then
+          echo "$AdditionLOCALVERSION" >> localversion
         fi
 
     - name: Add Localversion to Filename
