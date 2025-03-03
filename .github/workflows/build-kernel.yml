@@ -800,7 +800,7 @@ jobs:
             fi
           }
 
-          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3/*
+          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
           upload_file "AnyKernel3-*" "AnyKernel"
           upload_file "Image" "KernelImage"
           upload_file "boot.img" "BootImage"
