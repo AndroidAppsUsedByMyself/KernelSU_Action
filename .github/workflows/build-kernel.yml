@@ -775,31 +775,32 @@ jobs:
           COMMIT_URL: ${{ github.event.head_commit.url }}
         continue-on-error: true
         run: |
-          ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
           chmod +x telegram-bot-api-binary
-          ./telegram-bot-api-binary --api-id=${{ secrets.TG_API_ID }} --api-hash=${{ secrets.TG_API_HASH }} --local 2>&1 > /dev/null & 
+          ./telegram-bot-api-binary --api-id=${{ secrets.TG_API_ID }} --api-hash=${{ secrets.TG_API_HASH }} --local 2>&1 > /dev/null &
 
-          export Artifacts1=$(find artifacts -name "AnyKernel3-*")
-          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=${{ secrets.CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts1%22%2C%22caption%22:${ESCAPED}%7D%5D" \
-            -F Artifacts1="@$Artifacts1"
+          ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
 
-          export Artifacts2=$(find artifacts -name "Image-*")
-          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=${{ secrets.CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts2%22%2C%22caption%22:${ESCAPED}%7D%5D" \
-            -F Artifacts2="@$Artifacts2"
+          upload_file() {
+            local pattern=$1
+            local media_id=$2
+            local file=$(find artifacts -name "$pattern" | head -1)
+            
+            if [[ -f "$file" ]]; then
+              curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}" \
+                -F document=@"$file" \
+                -F caption="${ESCAPED}"
+            else
+              echo "⚠️ File not found: $pattern"
+            fi
+          }
 
-          export Artifacts3=$(find artifacts -name "boot-*")
-          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=${{ secrets.CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts3%22%2C%22caption%22:${ESCAPED}%7D%5D" \
-            -F Artifacts3="@$Artifacts3"
+          upload_file "AnyKernel3-*" "AnyKernel"
+          upload_file "Image-*" "KernelImage"
+          upload_file "boot-*" "BootImage"
+          upload_file "defconfig" "KernelConfig"
+          upload_file "Drivers-*" "KernelDrivers"
 
-          export Artifacts4=$(find artifacts -name "defconfig")
-          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=${{ secrets.CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts3%22%2C%22caption%22:${ESCAPED}%7D%5D" \
-            -F Artifacts4="@$Artifacts4"
-
-          export Artifacts5=$(find artifacts -name "Drivers-*")
-          curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN  }}/sendMediaGroup?disable_notification=true&chat_id=${{ secrets.CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FArtifacts3%22%2C%22caption%22:${ESCAPED}%7D%5D" \
-            -F Artifacts5="@$Artifacts5"
-
-          pkill telegram-bot
+          pkill telegram-bot-api
 
   telegram-bot-api:
     name: Telegram Bot API
