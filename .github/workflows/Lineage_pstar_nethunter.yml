@@ -805,7 +805,7 @@ jobs:
           upload_file "Image" "KernelImage"
           upload_file "boot.img" "BootImage"
           upload_file "lineageos_pstar_defconfig" "KernelConfig"
-          upload_file "Drivers-*" "KernelDrivers"
+          # upload_file "Drivers-*" "KernelDrivers"
 
           pkill telegram-bot-api
 
