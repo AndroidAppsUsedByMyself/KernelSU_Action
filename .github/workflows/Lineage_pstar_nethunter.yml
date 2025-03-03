@@ -816,17 +816,10 @@ jobs:
             fi
           }
 
-          if [[ -d artifacts/AnyKernel3-* ]]; then
-            mkdir -p artifacts/packages
-            find artifacts/AnyKernel3-* -maxdepth 0 -type d | while read dir; do
-              zip -jr "artifacts/packages/$(basename $dir).zip" "$dir"
-            done
-          else
-            echo "⏭️ No AnyKernel3 directories found"
-          fi
+          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
 
-          upload_file "packages/AnyKernel3*.zip" "KernelPackage" && \
-          upload_file "Image-*" "KernelImage" && \
+          upload_file "AnyKernel3.zip" "KernelPackage" && \
+          upload_file "Image" "KernelImage" && \
           upload_file "boot.img" "BootImage" && \
           upload_file "*defconfig" "KernelConfig" 
 
