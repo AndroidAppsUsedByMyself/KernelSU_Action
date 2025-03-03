@@ -800,10 +800,11 @@ jobs:
             fi
           }
 
+          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3/*
           upload_file "AnyKernel3-*" "AnyKernel"
-          upload_file "Image-*" "KernelImage"
-          upload_file "boot-*" "BootImage"
-          upload_file "defconfig" "KernelConfig"
+          upload_file "Image" "KernelImage"
+          upload_file "boot.img" "BootImage"
+          upload_file "lineageos_pstar_defconfig" "KernelConfig"
           upload_file "Drivers-*" "KernelDrivers"
 
           pkill telegram-bot-api
