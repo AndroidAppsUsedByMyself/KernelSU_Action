@@ -702,32 +702,36 @@ jobs:
             exit 1
         fi
 
+    - name: Set FINAL_FILE_NAME
+      run: |
+        echo "FINAL_FILE_NAME=${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}" >> $GITHUB_ENV
+
     - name: Upload ${{ env.KERNEL_IMAGE_NAME }}
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.FINAL_FILE_NAME }}
         path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
 
     - name: Upload AnyKernel3
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: AnyKernel3${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: AnyKernel3${{ env.FINAL_FILE_NAME }}
         path: kernel_workspace/AnyKernel3/*
 
     - name: Upload DTBO image
       if: env.CHECK_DTBO_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: dtbo-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: dtbo-${{ env.FINAL_FILE_NAME }}
         path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img
 
     - name: Upload boot image
       if: env.MAKE_BOOT_IMAGE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: boot${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: boot${{ env.FINAL_FILE_NAME }}
         path: kernel_workspace/boot.img
 
     - name: Upload Kernel defconfig
@@ -741,14 +745,14 @@ jobs:
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: Drivers${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: Drivers${{ env.FINAL_FILE_NAME }}
         path: kernel_workspace/android-kernel/out/drivers/**/*.ko
 
     - name: Upload KernelSU lkm
       if: env.CHECK_KERNELSU_LKM_IS_OK == 'true'
       uses: actions/upload-artifact@main
       with:
-        name: KernelSU${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        name: KernelSU${{ env.FINAL_FILE_NAME }}
         path: |
           kernel_workspace/android-kernel/out/drivers/kernelsu/kernelsu.ko
 
@@ -760,10 +764,12 @@ jobs:
       - build
       - telegram-bot-api
     steps:
-      - name: Donwload Artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
       - name: Download Telegram Bot API Binary
         uses: actions/download-artifact@master
         with:
