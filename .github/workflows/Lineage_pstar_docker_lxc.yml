@@ -790,7 +790,7 @@ jobs:
             --api-hash=${{ secrets.TG_API_HASH }} \
             --local \
             --http-port=8081 \
-            --log-file=telegram.log &
+            --log=telegram.log &
 
           timeout 10s bash -c 'until curl -s http://127.0.0.1:8081 >/dev/null; do sleep 1; done'
 
