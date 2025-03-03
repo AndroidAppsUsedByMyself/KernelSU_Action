@@ -784,7 +784,7 @@ jobs:
           chmod +x telegram-bot-api-binary
           ./telegram-bot-api-binary --api-id=${{ secrets.TG_API_ID }} --api-hash=${{ secrets.TG_API_HASH }} --local 2>&1 > /dev/null &
 
-          ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
+          # ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
 
           upload_file() {
             local pattern=$1
@@ -794,7 +794,7 @@ jobs:
             if [[ -f "$file" ]]; then
               curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}" \
                 -F document=@"$file" \
-                -F caption="${ESCAPED}"
+                -F caption="${media_id}"
             else
               echo "⚠️ File not found: $pattern"
             fi
