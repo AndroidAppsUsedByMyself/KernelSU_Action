@@ -781,33 +781,61 @@ jobs:
           COMMIT_URL: ${{ github.event.head_commit.url }}
         continue-on-error: true
         run: |
-          chmod +x telegram-bot-api-binary
-          ./telegram-bot-api-binary --api-id=${{ secrets.TG_API_ID }} --api-hash=${{ secrets.TG_API_HASH }} --local 2>&1 > /dev/null &
+          export ACTION_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          export GITHUB_WORKFLOW
 
-          # ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
+          chmod +x telegram-bot-api-binary
+          nohup ./telegram-bot-api-binary \
+            --api-id=${{ secrets.TG_API_ID }} \
+            --api-hash=${{ secrets.TG_API_HASH }} \
+            --local \
+            --http-port=8081 \
+            --log-file=telegram.log &
+
+          timeout 10s bash -c 'until curl -s http://127.0.0.1:8081 >/dev/null; do sleep 1; done'
 
           upload_file() {
             local pattern=$1
-            local media_id=$2
-            local file=$(find artifacts -name "$pattern" | head -1)
+            local category=$2
+            local file=$(find artifacts -type f -name "$pattern" | head -1)
             
             if [[ -f "$file" ]]; then
-              curl -v "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.CHAT_ID }}" \
-                -F document=@"$file" \
-                -F caption="${media_id}"
+              local caption="[${GITHUB_WORKFLOW}] ${category} Build Success
+          🔗 Action: ${ACTION_URL}
+          💬 Commit: ${COMMIT_MESSAGE//$'\n'/ }"
+              
+              echo "📤 Uploading $category: $file"
+              curl --progress-bar \
+                "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
+                -F "chat_id=${{ secrets.CHAT_ID }}" \
+                -F "document=@$file" \
+                -F "caption=${caption:0:1024}" || echo "❌ Upload failed: $file"
             else
-              echo "⚠️ File not found: $pattern"
+              echo "⚠️ Not found: $pattern"
+              return 1
             fi
           }
 
-          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
-          upload_file "AnyKernel3*" "AnyKernel"
-          upload_file "Image" "KernelImage"
-          upload_file "boot.img" "BootImage"
-          upload_file "lineageos_pstar_defconfig" "KernelConfig"
-          # upload_file "Drivers-*" "KernelDrivers"
+          if [[ -d artifacts/AnyKernel3-* ]]; then
+            mkdir -p artifacts/packages
+            find artifacts/AnyKernel3-* -maxdepth 0 -type d | while read dir; do
+              zip -jr "artifacts/packages/$(basename $dir).zip" "$dir"
+            done
+          else
+            echo "⏭️ No AnyKernel3 directories found"
+          fi
 
-          pkill telegram-bot-api
+          upload_file "packages/AnyKernel3*.zip" "KernelPackage" && \
+          upload_file "Image-*" "KernelImage" && \
+          upload_file "boot.img" "BootImage" && \
+          upload_file "*defconfig" "KernelConfig" 
+
+          if ps aux | grep -q '[t]elegram-bot-api'; then
+            pkill -f telegram-bot-api-binary
+            echo "✅ Bot API stopped"
+          else
+            echo "⚠️ Bot API process not found"
+          fi
 
   telegram-bot-api:
     name: Telegram Bot API
