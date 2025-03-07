@@ -815,7 +815,7 @@ jobs:
         run: |
           zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
       - name: Post to channel
-        if: ${{ github.event_name != 'pull_request' && success() && github.ref == 'refs/heads/master' }}
+        # if: ${{ github.event_name != 'pull_request' && success() && github.ref == 'refs/heads/master' }}
         env:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
@@ -835,7 +835,7 @@ jobs:
 
             # 构建消息参数
             ACTION_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            CAPTION="[Kernel Build] Success 🚀
+            CAPTION="[${GITHUB_WORKFLOW}] Build Success]
             🔗 Action: $ACTION_URL
             💬 Commit: ${COMMIT_MESSAGE//$'\n'/ }"
             ESCAPED_CAPTION=$(jq -nr --arg caption "$CAPTION" '$caption | @uri')
