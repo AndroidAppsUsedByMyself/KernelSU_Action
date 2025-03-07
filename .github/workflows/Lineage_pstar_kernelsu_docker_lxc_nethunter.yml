@@ -832,6 +832,21 @@ jobs:
 
           upload_file() {
             local pattern=$1
+            local file=$(find artifacts -type f -name "$pattern" | head -1)
+            if [[ -f "$file" ]]; then
+              echo "📤 Uploading $category: $file"
+              curl --progress-bar \
+                "http://127.0.0.1:8081/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
+                -F "chat_id=${{ secrets.CHAT_ID }}" \
+                -F "document=@$file" || echo "❌ Upload failed: $file"
+            else
+              echo "⚠️ Not found: $pattern"
+              return 1
+            fi
+          }
+
+          upload_file_with_caption() {
+            local pattern=$1
             local category=$2
             local file=$(find artifacts -type f -name "$pattern" | head -1)
             
@@ -854,10 +869,10 @@ jobs:
 
           zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
 
-          upload_file "AnyKernel3.zip" "KernelPackage" && \
+          upload_file_with_caption "AnyKernel3.zip" "KernelPackage" && \
           upload_file "Image" "KernelImage" && \
           upload_file "boot.img" "BootImage" && \
-          upload_file "*defconfig" "KernelConfig" 
+          upload_file "*defconfig" "KernelConfig"
 
           if ps aux | grep -q '[t]elegram-bot-api'; then
             pkill -f telegram-bot-api-binary
