@@ -811,12 +811,15 @@ jobs:
         with:
           name: telegram-bot-api-binary
           path: .
+      - name: Zip AnyKernel3
+        run: |
+          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
       - name: Release
         env:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           DISCUSSION_ID: ${{ secrets.DISCUSSION_ID }}
           TOPIC_ID: ${{ secrets.TOPIC_ID }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
         continue-on-error: true
@@ -835,16 +838,14 @@ jobs:
 
           timeout 10s bash -c 'until curl -s http://127.0.0.1:8081 >/dev/null; do sleep 1; done'
 
-          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
-
-          if [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then
+          if [ ! -z "${{ secrets.TG_BOT_TOKEN }}" ]; then
             export KernelPackage=$(find artifacts -type f -name "AnyKernel3.zip" | head -1)
             export KernelImage=$(find artifacts -type f -name "Image" | head -1)
             export BootImage=$(find artifacts -type f -name "boot.img" | head -1)
             export KernelConfig=$(find artifacts -type f -name "*defconfig" | head -1)
             ESCAPED=`python3 -c 'import json,os,urllib.parse; msg = json.dumps(os.environ["COMMIT_MESSAGE"]); print(urllib.parse.quote(msg if len(msg) <= 1024 else json.dumps(os.environ["COMMIT_URL"])))'`
-            curl -v "https://api.telegram.org/bot${BOT_TOKEN}/sendMediaGroup?chat_id=${CHAT_ID}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelPackage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelImage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FjarDebug%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FmanagerDebug%22%2C%22caption%22:${ESCAPED}%7D%5D" -F KernelPackage="@$KernelPackage" -F KernelImage="@$KernelImage" -F BootImage="@$BootImage" -F KernelConfig="@$KernelConfig"
-            # curl -v "https://api.telegram.org/bot${BOT_TOKEN}/sendMediaGroup?chat_id=${DISCUSSION_ID}&message_thread_id=${TOPIC_ID}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelPackage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelImage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FjarDebug%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FmanagerDebug%22%2C%22caption%22:${ESCAPED}%7D%5D" -F KernelPackage="@$KernelPackage" -F KernelImage="@$KernelImage" -F BootImage="@$BootImage" -F KernelConfig="@$KernelConfig"
+            curl -v "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMediaGroup?chat_id=${CHAT_ID}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelPackage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelImage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FjarDebug%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FmanagerDebug%22%2C%22caption%22:${ESCAPED}%7D%5D" -F KernelPackage="@$KernelPackage" -F KernelImage="@$KernelImage" -F BootImage="@$BootImage" -F KernelConfig="@$KernelConfig"
+            # curl -v "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMediaGroup?chat_id=${DISCUSSION_ID}&message_thread_id=${TOPIC_ID}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelPackage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FKernelImage%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FjarDebug%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FmanagerDebug%22%2C%22caption%22:${ESCAPED}%7D%5D" -F KernelPackage="@$KernelPackage" -F KernelImage="@$KernelImage" -F BootImage="@$BootImage" -F KernelConfig="@$KernelConfig"
           fi
 
   notify:
