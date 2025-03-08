@@ -804,14 +804,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: Display structure of downloaded files
         run: ls -R artifacts
+
       - name: Download Telegram Bot API Binary
         uses: actions/download-artifact@master
         with:
           name: telegram-bot-api-binary
           path: .
-      - name: Release
+
+      - name: Zip AnyKernel3
+        run: |
+          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
+
+      - name: Release to Telegram
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
@@ -867,8 +874,6 @@ jobs:
               return 1
             fi
           }
-
-          zip -r artifacts/AnyKernel3.zip artifacts/AnyKernel3*/*
 
           upload_file_with_caption "AnyKernel3.zip" "KernelPackage" && \
           upload_file "Image" "KernelImage" && \
