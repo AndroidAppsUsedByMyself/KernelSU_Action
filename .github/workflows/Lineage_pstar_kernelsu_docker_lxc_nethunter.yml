@@ -811,8 +811,10 @@ jobs:
 
           if [ "$status_code" -eq 204 ]; then
             echo "is_member=true" >> $GITHUB_OUTPUT
+            echo "is_member=true"
           else
             echo "is_member=false" >> $GITHUB_OUTPUT
+            echo "is_member=false"
           fi
 
   upload-to-telegram:
