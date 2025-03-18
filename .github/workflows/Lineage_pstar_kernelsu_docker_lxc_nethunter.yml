@@ -820,7 +820,8 @@ jobs:
     name: Upload Telegram
     if: |
       (github.event_name == 'schedule' && success()) ||
-      (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true' && success())    runs-on: ubuntu-22.04
+      (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true' && success())
+    runs-on: ubuntu-22.04
     needs:
       - build
       - telegram-bot-api
