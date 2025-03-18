@@ -792,10 +792,35 @@ jobs:
           name: telegram-bot-api-binary
           path: telegram-bot-api-binary
 
+  check-member:
+    if: github.event_name == 'watch'
+    runs-on: ubuntu-latest
+    outputs:
+      is-member: ${{ steps.check.outputs.is_member }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check membership
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          resp=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}")
+
+          if [ $? -eq 0 ]; then
+            echo "is_member=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_member=false" >> $GITHUB_OUTPUT
+          fi
+
   upload-to-telegram:
     name: Upload Telegram
-    if: ${{ success() }}
-    runs-on: ubuntu-22.04
+    if: |
+      (github.event_name == 'schedule' && success()) ||
+      (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true' && success())    runs-on: ubuntu-22.04
     needs:
       - build
       - telegram-bot-api
@@ -889,8 +914,9 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    if: always()
-    needs:
+    if: |
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true')      needs:
       - build
     steps:
       - name: Send NTFY notifications
