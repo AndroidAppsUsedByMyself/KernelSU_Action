@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 branches=(
   "Lineage_pstar_with_KernelSU_Next"
