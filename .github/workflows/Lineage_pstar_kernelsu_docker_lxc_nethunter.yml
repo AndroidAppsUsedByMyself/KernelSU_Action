@@ -819,13 +819,14 @@ jobs:
 
   upload-to-telegram:
     name: Upload Telegram
+    if: |
+      (github.event_name == 'schedule' && success()) ||
+      (github.event_name == 'watch' && success())
     runs-on: ubuntu-22.04
     needs:
       - build
       - telegram-bot-api
     steps:
-      - name: Debug Info
-        run: echo "is_member: ${{ needs.check-member.outputs.is-member }}"
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
