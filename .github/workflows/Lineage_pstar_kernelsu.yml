@@ -793,10 +793,9 @@ jobs:
           path: telegram-bot-api-binary
 
   check-member:
-    if: github.event_name == 'watch'
     runs-on: ubuntu-latest
     outputs:
-      is-member: ${{ steps.check.outputs.is_member }}
+      is_member: ${{ steps.check.outputs.is_member }}
     permissions:
       contents: read
     steps:
@@ -820,12 +819,16 @@ jobs:
   upload-to-telegram:
     name: Upload Telegram
     if: |
-      (github.event_name == 'schedule' && success()) ||
-      (github.event_name == 'watch' && success())
+      success() &&
+      (
+      (github.event_name != 'watch' && 1 && 1) ||
+      (github.event_name == 'watch' && needs.check-member.outputs.is_member == 'true')
+      )
     runs-on: ubuntu-22.04
     needs:
       - build
       - telegram-bot-api
+      - check-member
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
@@ -917,10 +920,13 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'schedule') ||
-      (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true')
+      (
+      (github.event_name != 'watch' && 1 && 1) ||
+      (github.event_name == 'watch' && needs.check-member.outputs.is_member == 'true')
+      )
     needs:
       - build
+      - check-member
     steps:
       - name: Send NTFY notifications
         env:
