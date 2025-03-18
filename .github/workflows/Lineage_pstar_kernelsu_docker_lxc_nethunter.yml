@@ -916,7 +916,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'schedule' ||
+      (github.event_name == 'schedule') ||
       (github.event_name == 'watch' && needs.check-member.outputs.is-member == 'true')
     needs:
       - build
