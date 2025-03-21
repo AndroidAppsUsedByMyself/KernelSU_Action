@@ -907,7 +907,7 @@ jobs:
 
           upload_file_with_caption "AnyKernel3.zip" "KernelPackage" && \
           # upload_file "Image" "KernelImage" && \
-          upload_file "boot.img" "BootImage" && \
+          # upload_file "boot.img" "BootImage" && \
           # upload_file "*defconfig" "KernelConfig"
 
           if ps aux | grep -q '[t]elegram-bot-api'; then
